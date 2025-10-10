@@ -9,8 +9,8 @@ Adafruit_MotorShield AFMS = Adafruit_MotorShield();
 Adafruit_DCMotor *motorL = AFMS.getMotor(1);
 Adafruit_DCMotor *motorR = AFMS.getMotor(2);
 
-int speedL = 50;
-int speedR = 50;
+int speedL = 31;
+int speedR = 30;
 
 int sensorL = A0;
 int sensorM = A1;
@@ -19,10 +19,17 @@ int sensorR = A2;
 int thresholdVoltageLow = 100;
 int thresholdVoltageHigh = 700;
 
+typedef enum {
+  NONE,
+  RIGHT,
+  LEFT
+} TurnState;
+
+TurnState turning = NONE;
+
 void setup() {
   Serial.begin(9600);           // set up Serial library at 9600 bps
   Serial.println("Adafruit Motorshield v2 - DC Motor test!");
-  Serial.println("pie");
 
   if (!AFMS.begin()) {         // create with the default frequency 1.6KHz
   // if (!AFMS.begin(1000)) {  // OR with a different frequency, say 1KHz
@@ -32,83 +39,62 @@ void setup() {
   Serial.println("Motor Shield found.");
 
   motorL->setSpeed(speedL);
-  motorR->setSpeed(-speedR);
+  motorR->setSpeed(speedR);
   motorL->run(FORWARD);
-  motorR->run(FORWARD);
+  motorR->run(BACKWARD);
 
 }
 
 void loop() {
 
-  // test different motor speeds for the right motor
-  motorL -> setSpeed(50);
-  motorR -> setSpeed(-40);
-  delay(3000);
-  motorR -> setSpeed(0);
-  delay(3000);
-  motorR -> setSpeed(-30);
-  delay(3000);
-  motorR -> setSpeed(0);
-  delay(3000);
-  motorR -> setSpeed(-20);
+  boolean detectL = analogRead(sensorL)<thresholdVoltageLow;
+  boolean detectR = analogRead(sensorR)<thresholdVoltageLow;
+  boolean detectM = analogRead(sensorM)<thresholdVoltageLow;
 
-  // stop forever (i did this so i wouldnt have to comment out all the real code)
-  while(1){
-    delay(1000);
-  }
-
-  if(analogRead(sensorL)<thresholdVoltageLow){ // left sensor on line -> need to turn left
-    Serial.println("left");
-    speedL = -50;
-    // speedL -= 10;
-    // speedR += 10
-    Serial.print(" ");
-    Serial.print(speedL);
-    Serial.print(" ");
-    Serial.print(speedR);
-    Serial.println("");
-  }else if (analogRead(sensorR)<thresholdVoltageLow) {
-    Serial.println("right");
-    speedR = -50;
-    // speedR -= 10;
-    // speedL += 10;
-    Serial.print(" ");
-    Serial.print(speedL);
-    Serial.print(" ");
-    Serial.print(speedR);
-    Serial.println("");
-  }else if (analogRead(sensorM)<thresholdVoltageLow){
+  /* ---------------- this stuff does not work -------------- */
+  if(turning == LEFT){  // if it is turning left sharply, keep turning until the L sensor is off
+    if (detectM && !detectL){
+      turning = NONE;
+    }
+  }else if(turning == RIGHT){ // if it is turning right sharply, keep turning until the R sensor is off
+    if (detectM && !detectR){
+      turning = NONE;
+    }
+  }else if (detectL && detectM){ // is it a sharp left turn?
+    Serial.println("left middle");
+    motorL->run(BACKWARD);
+    motorR->run(BACKWARD);
+    turning = LEFT;
+  }else if (detectR && detectM){ // is it a sharp right turn?
+    Serial.println("right middle");
+    motorL->run(FORWARD);
+    motorR->run(FORWARD);
+    turning = RIGHT;
+  /* ---------------- this stuff works -------------- */
+  }else if (detectM){ // on the line
     Serial.println("middle");
-    speedR = 50;
-    speedL = 50;
-    Serial.print(" ");
-    Serial.print(speedL);
-    Serial.print(" ");
-    Serial.print(speedR);
-    Serial.println("");
+    motorL->run(FORWARD);
+    motorR->run(BACKWARD);
+  }else if(detectL){ // a little bit left
+    Serial.println("left");
+    motorL->run(BACKWARD);
+    motorR->run(BACKWARD);
+  }else if (detectR) { // a little bit right
+    Serial.println("right");
+    motorL->run(FORWARD);
+    motorR->run(FORWARD); // right goes backwards
   }
   
-  motorL->setSpeed(speedL);
-  motorR->setSpeed(-speedR);
-  
-  // motorL->setSpeed(100);
-  // motorR->setSpeed(100);
-
-  // Serial.print(analogRead(sensorL));
-  // Serial.print(" ");
-  // Serial.print(analogRead(sensorM));
-  // Serial.print(" ");
-  // Serial.print(analogRead(sensorR));
-
-  Serial.print(" ");
-  Serial.print(speedL);
-  Serial.print(" ");
-  Serial.print(speedR);
-  Serial.println("");
-
-  
-
   delay(50);
+
+  Serial.print(detectL);
+  Serial.print(" ");
+  Serial.print(detectR);
+  Serial.print(" ");
+  Serial.print(detectM);
+
+
+  Serial.println("");
 
   // sample code from example
   /*
