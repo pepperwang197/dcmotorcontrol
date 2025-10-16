@@ -2,23 +2,27 @@
 
 // Create the motor shield object with the default I2C address
 Adafruit_MotorShield AFMS = Adafruit_MotorShield();
-// Or, create it with a different I2C address (say for stacking)
-// Adafruit_MotorShield AFMS = Adafruit_MotorShield(0x61);
 
-// initialize motors
+// Initialize motors
 Adafruit_DCMotor *motorL = AFMS.getMotor(1);
 Adafruit_DCMotor *motorR = AFMS.getMotor(2);
 
-int speedL = 31;
-int speedR = 30;
+// Base speeds
+int baseSpeedL = 31;
+int baseSpeedR = 30;
+int turnSpeed = 60;        // for sharp turns
+int slightTurnSpeed = 40;  // for slight turns
+int searchSpeed = 25;      // speed when searching for line
 
+// Line sensors
 int sensorL = A0;
 int sensorM = A1;
 int sensorR = A2;
 
+// Thresholds
 int thresholdVoltageLow = 100;
-int thresholdVoltageHigh = 700;
 
+// Turn state
 typedef enum {
   NONE,
   RIGHT,
@@ -28,109 +32,88 @@ typedef enum {
 TurnState turning = NONE;
 
 void setup() {
-  Serial.begin(9600);           // set up Serial library at 9600 bps
+  Serial.begin(9600);
   Serial.println("Adafruit Motorshield v2 - DC Motor test!");
 
-  if (!AFMS.begin()) {         // create with the default frequency 1.6KHz
-  // if (!AFMS.begin(1000)) {  // OR with a different frequency, say 1KHz
+  if (!AFMS.begin()) {
     Serial.println("Could not find Motor Shield. Check wiring.");
     while (1);
   }
+
   Serial.println("Motor Shield found.");
 
-  motorL->setSpeed(speedL);
-  motorR->setSpeed(speedR);
+  motorL->setSpeed(baseSpeedL);
+  motorR->setSpeed(baseSpeedR);
   motorL->run(FORWARD);
   motorR->run(BACKWARD);
-
 }
 
 void loop() {
+  // Read sensors
+  bool detectL = analogRead(sensorL) < thresholdVoltageLow;
+  bool detectM = analogRead(sensorM) < thresholdVoltageLow;
+  bool detectR = analogRead(sensorR) < thresholdVoltageLow;
 
-  boolean detectL = analogRead(sensorL)<thresholdVoltageLow;
-  boolean detectR = analogRead(sensorR)<thresholdVoltageLow;
-  boolean detectM = analogRead(sensorM)<thresholdVoltageLow;
+  // Sharp turn recovery
+  if (turning == LEFT && detectM && !detectL) turning = NONE;
+  if (turning == RIGHT && detectM && !detectR) turning = NONE;
 
-  /* ---------------- this stuff does not work -------------- */
-  if(turning == LEFT){  // if it is turning left sharply, keep turning until the L sensor is off
-    if (detectM && !detectL){
-      turning = NONE;
-    }
-  }else if(turning == RIGHT){ // if it is turning right sharply, keep turning until the R sensor is off
-    if (detectM && !detectR){
-      turning = NONE;
-    }
-  }else if (detectL && detectM){ // is it a sharp left turn?
-    Serial.println("left middle");
+  // Sharp turns
+  if (turning == NONE && detectL && detectM) {
+    Serial.println("sharp LEFT turn");
+    motorL->setSpeed(turnSpeed);
+    motorR->setSpeed(turnSpeed);
     motorL->run(BACKWARD);
     motorR->run(BACKWARD);
     turning = LEFT;
-  }else if (detectR && detectM){ // is it a sharp right turn?
-    Serial.println("right middle");
+  } else if (turning == NONE && detectR && detectM) {
+    Serial.println("sharp RIGHT turn");
+    motorL->setSpeed(turnSpeed);
+    motorR->setSpeed(turnSpeed);
     motorL->run(FORWARD);
     motorR->run(FORWARD);
     turning = RIGHT;
-  /* ---------------- this stuff works -------------- */
-  }else if (detectM){ // on the line
-    Serial.println("middle");
+  }
+  // Slight turns and forward
+  else if (detectM && !detectL && !detectR) {
+    Serial.println("straight");
+    motorL->setSpeed(baseSpeedL);
+    motorR->setSpeed(baseSpeedR);
     motorL->run(FORWARD);
     motorR->run(BACKWARD);
-  }else if(detectL){ // a little bit left
-    Serial.println("left");
+  } else if (detectL && !detectM) {
+    Serial.println("slight LEFT turn");
+    motorL->setSpeed(slightTurnSpeed);
+    motorR->setSpeed(slightTurnSpeed);
     motorL->run(BACKWARD);
     motorR->run(BACKWARD);
-  }else if (detectR) { // a little bit right
-    Serial.println("right");
+  } else if (detectR && !detectM) {
+    Serial.println("slight RIGHT turn");
+    motorL->setSpeed(slightTurnSpeed);
+    motorR->setSpeed(slightTurnSpeed);
     motorL->run(FORWARD);
-    motorR->run(FORWARD); // right goes backwards
+    motorR->run(FORWARD);
   }
-  
+  // Line lost: search for line
+  else if (!detectL && !detectM && !detectR) {
+    Serial.println("no line detected - searching");
+    if (turning == LEFT || turning == NONE) {
+      motorL->setSpeed(searchSpeed);
+      motorR->setSpeed(searchSpeed);
+      motorL->run(BACKWARD);
+      motorR->run(BACKWARD);
+    } else if (turning == RIGHT) {
+      motorL->setSpeed(searchSpeed);
+      motorR->setSpeed(searchSpeed);
+      motorL->run(FORWARD);
+      motorR->run(FORWARD);
+    }
+  }
+
+  // Print sensor values for debugging
+  Serial.print(detectL); Serial.print(" ");
+  Serial.print(detectM); Serial.print(" ");
+  Serial.println(detectR);
+
   delay(50);
-
-  Serial.print(detectL);
-  Serial.print(" ");
-  Serial.print(detectR);
-  Serial.print(" ");
-  Serial.print(detectM);
-
-
-  Serial.println("");
-
-  // sample code from example
-  /*
-   uint8_t i;
-
-  Serial.print("tick");
-
-  motorL->run(FORWARD);
-  for (i=0; i<255; i++) {
-    motorL->setSpeed(i);
-    delay(10);
-  }
-  for (i=255; i!=0; i--) {
-    motorL->setSpeed(i);
-    delay(10);
-  }
-
-  Serial.print("tock");
-
-  motorL->run(BACKWARD);
-  for (i=0; i<255; i++) {
-    motorL->setSpeed(i);
-    delay(10);
-  }
-  for (i=255; i!=0; i--) {
-    motorL->setSpeed(i);
-    delay(10);
-  }
-
-  Serial.print("tech");
-  motorL->run(RELEASE);
-  delay(1000);
-  */
- 
-
-  
-
-
 }
